@@ -1,0 +1,68 @@
+# ========== Runtime ==========
+seed: 1
+device: cuda
+out_dir: ./runs/zeroout_fabric
+
+# ========== Fabric (distributed) ==========
+fabric:
+  accelerator: cuda        # "cpu", "cuda", "mps"
+  devices: 3               # number of GPUs, or "auto"
+  strategy: ddp            # "ddp", "ddp_find_unused_parameters_true", etc.
+  precision: 16-mixed      # "32-true", "bf16-mixed", "16-mixed"
+
+# ========== Data ==========
+data:
+  root: ./data             # path where datasets are stored
+  dataset: replogle_k562_essential       # dataset slug (e.g., "k562_gwps", "rpe1")
+
+# ========== Split ==========
+split:
+  type: simulation         # ['simulation','simulation_single','combo_seen0','combo_seen1','combo_seen2','single','no_test','no_split','custom']
+  seed: 1
+  train_gene_set_size: 0.75
+  combo_seen2_train_frac: 0.75
+  combo_single_test_frac: 0.10
+  test_perts: null
+  only_test_set_perts: false
+  test_pert_genes: null
+  split_dict_path: null
+  val_size: 0.10
+
+# ========== Dataloader ==========
+loader:
+  batch_size: 128
+  test_batch_size: 256
+  num_workers: 4
+  pin_memory: true
+  persistent_workers: true
+  shuffle: true
+
+# ========== Model (ZeroOutVariant args) ==========
+model:
+  hidden_size: 64
+  num_go_gnn_layers: 1          # unused inside ZeroOutVariant, but kept for consistency
+  num_gene_gnn_layers: 1        # encoder depth for GPSConv over coexpression
+  decoder_hidden_size: 16
+  no_perturb: false
+  uncertainty: false
+  direction_lambda: 0.1
+
+# ========== Coexpression Graph ==========
+coexpression:
+  from_cells: train             # 'train' | 'ctrl' | 'all'
+  k: 20                         # top-k neighbors per gene
+  threshold: 0.4                 # pearson correlation cutoff
+  abs_weight: true
+
+# ========== Training ==========
+train:
+  epochs: 40
+  pretrain_epochs: 20
+  lr: 0.001
+  weight_decay: 0.0005
+
+# ========== WandB (optional) ==========
+wandb:
+  enable: false
+  project: GEARS
+  run_name: zeroout_fabric
