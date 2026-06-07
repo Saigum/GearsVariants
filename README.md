@@ -1,95 +1,184 @@
-# GEARS: Predicting transcriptional outcomes of novel multi-gene perturbations
+# GearsVariant
 
-This repository hosts the official implementation of GEARS, a method that can predict transcriptional response to both single and multi-gene perturbations using single-cell RNA-sequencing data from perturbational screens. 
+This repository is a working research fork of GEARS for exploring perturbation-aware architectural changes and mechanistic graph modelling on single-cell perturbation data. The codebase now reflects three main strands of work:
 
+- `gears-graph.ipynb`: GEARS architecture variants and ablations.
+- `mech-modelling(3).ipynb`: mechanistic graph-learning experiments with training outputs.
+- `mechanistic_pert.ipynb`: a duplicate/export of the same mechanistic workflow and results.
+
+The current experiments are centered on the Norman dataset with `single` split evaluation.
 
 <p align="center"><img src="https://github.com/snap-stanford/GEARS/blob/master/img/gears.png" alt="gears" width="900px" /></p>
 
+## What Has Been Implemented
 
-### Installation 
+### 1. GEARS architecture variants
 
-Install [PyG](https://pytorch-geometric.readthedocs.io/en/latest/notes/installation.html), and then do `pip install cell-gears`.
+The work in `gears-graph.ipynb` extends the base GEARS model with several alternative perturbation and graph encoders. The notebook defines and instantiates:
 
-### [New] Updates in v0.1.1
+- Original GEARS baseline
+- Expression-embedding GEARS
+- Gated expression embedding
+- Graph Attention Network variant
+- TransformerConv variant
+- No co-expression graph ablation
+- No perturbation graph ablation
+- Self-attention variant
 
-- Fixed training breakpoint bug from v0.1.0
-- Preprocessed dataloader now available for Replogle 2022 RPE1 and K562 essential datasets
-- Added custom split, fixed no-test split
+Most of the reusable implementations live in:
 
-### A note on usage:
+- `gears_variant/gears_variants.py`
+- `gears_variant/gears_changes.py`
+- `gvd/breakdown/gated_addition.py`
+- `gvd/breakdown/attentional_perturber.py`
+- `gvd/breakdown/sage_encoder.py`
 
-- GEARS is currently not designed to handle training across multiple cell types or cross-cell type transfer of predictions
-- GEARS has not been tested for training with bulk sequencing data.
-- When trained on single-gene perturbation data alone, GEARS cannot reliably predict outcomes for combinatorial perturbations. The model must be trained on some combinatorial perturbation data to make such predictions.
-- GEARS has been tested using datasets that contain multiple perturbation types, and multiple cells within each perturbation type. Datasets with too few cells per perturbation or too few perturbations may not work well with our model.
+Note: `gears-graph.ipynb` contains the model-development workflow and training calls, but it does not currently store benchmark outputs in the notebook itself, so the concrete result summary below comes from the mechanistic notebooks.
 
-### Core API Interface
+### 2. Mechanistic perturbation modelling
 
-Using the API, you can (1) reproduce the results in our paper and (2) train GEARS on your perturbation dataset using a few lines of code.
+The mechanistic notebooks introduce a GEARS variant that tries to predict perturbation-specific changes to the gene co-expression graph during expression forecasting. The main additions are:
 
-```python
-from gears import PertData, GEARS
+- Centered expression embeddings projected into the hidden space
+- Gated fusion between gene embeddings and cell-expression embeddings
+- An attentional graph perturber that modifies edge weights per perturbation
+- GraphSAGE-based node encoding inside the graph perturber
+- Optional MMD-based training objective with directionality-aware loss
+- K-hop graph augmentation with added zero-weight edges before learning perturbation-specific edge updates
 
-# get data
-pert_data = PertData('./data')
-# load dataset in paper: norman, adamson, dixit.
-pert_data.load(data_name = 'norman')
-# specify data split
-pert_data.prepare_split(split = 'simulation', seed = 1)
-# get dataloader with batch size
-pert_data.get_dataloader(batch_size = 32, test_batch_size = 128)
+The main implementation is in:
 
-# set up and train a model
-gears_model = GEARS(pert_data, device = 'cuda:8')
-gears_model.model_initialize(hidden_size = 64)
-gears_model.train(epochs = 20)
+- `gvd/breakdown/gears_mech.py`
 
-# save/load model
-gears_model.save_model('gears')
-gears_model.load_pretrained('gears')
+## Notebook Summary
 
-# predict
-gears_model.predict([['CBL', 'CNN1'], ['FEV']])
-gears_model.GI_predict(['CBL', 'CNN1'], GI_genes_file=None)
+### `gears-graph.ipynb`
+
+Purpose:
+- Prototype and compare GEARS architecture variants.
+- Test whether alternate message passing and embedding strategies improve perturbation response prediction.
+
+Work completed:
+- Variant definitions were added.
+- Norman data loading and `single` split setup were added.
+- Training calls for each variant were prepared and executed in the notebook workflow.
+
+### `mech-modelling(3).ipynb` and `mechanistic_pert.ipynb`
+
+Purpose:
+- Train a mechanistic GEARS model that predicts both expression outcomes and perturbation-conditioned graph changes.
+- Compare learned perturbation graphs against ground-truth co-expression graphs.
+
+Work completed:
+- Custom split handling and Norman dataset loading
+- MMD and directionality loss functions
+- Mechanistic GEARS pretraining/training wrapper
+- Ground-truth graph loading from co-expression CSVs
+- Aggregation of predicted perturbation graphs across the train loader
+- Graph-vs-ground-truth reporting for 129 perturbations
+
+## Current Results
+
+### Expression prediction
+
+Two saved mechanistic runs are recorded in the notebooks.
+
+#### Run A: `num_add=6`, `use_mmd=True`
+
+- Original graph edges: `6359`
+- Added zero-weight edges: `1443`
+- Final graph edges: `7802`
+- Best validation MSE: `0.003423`
+- `pearson_delta`: `0.4338`
+- `pearson_delta_de`: `0.4225`
+- `pearson_delta_top200_de`: `0.5456`
+- `pearson_top200_de`: `0.9780`
+- `mse_top200_de`: `0.0437`
+- `frac_correct_direction_20`: `0.6214`
+- `frac_correct_direction_50`: `0.6321`
+- `frac_correct_direction_100`: `0.6139`
+
+#### Run B: `num_add=20`, no MMD
+
+- Original graph edges: `6359`
+- Added zero-weight edges: `3016`
+- Final graph edges: `9375`
+- Best validation MSE: `0.009107`
+- `pearson_delta`: `0.3193`
+- `pearson_delta_de`: `0.4448`
+- `pearson_delta_top200_de`: `0.5089`
+- `pearson_top200_de`: `0.9761`
+- `mse_top200_de`: `0.0480`
+- `frac_correct_direction_20`: `0.5518`
+- `frac_correct_direction_50`: `0.5271`
+- `frac_correct_direction_100`: `0.4896`
+
+Takeaway:
+- The `num_add=6` run with MMD produced the strongest overall expression-prediction result in the saved outputs, especially on validation MSE and directionality metrics.
+
+### Graph reconstruction
+
+For both mechanistic runs, predicted perturbation graphs were aggregated for `129` perturbations and compared with ground-truth co-expression graphs.
+
+Saved report averages from notebook outputs:
+
+#### Run A graph report
+
+- Mean Pearson correlation vs ground-truth graph weights: `0.0142`
+- Mean cosine similarity: `0.5469`
+- Mean weighted Jaccard: `0.2472`
+- Mean absolute difference vs learned control graph: `0.49154`
+- Mean absolute difference vs ground-truth control graph: `0.66192`
+
+#### Run B graph report
+
+- Mean Pearson correlation vs ground-truth graph weights: `0.0184`
+- Mean cosine similarity: `0.4995`
+- Mean weighted Jaccard: `0.2130`
+- Mean absolute difference vs learned control graph: `0.56361`
+- Mean absolute difference vs ground-truth control graph: `0.69580`
+
+### Single-perturbation cosine table
+
+`gvd/tables.md` contains a per-perturbation cosine comparison over `54` single perturbations:
+
+- Mean cosine similarity, model vs ground truth: `0.5338`
+- Mean cosine similarity, control baseline vs ground truth: `0.6468`
+
+Best model cosine in the saved table:
+- `KLF1`: `0.5921`
+
+Lowest model cosine in the saved table:
+- `FEV`: `0.4888`
+
+Takeaway:
+- The mechanistic model learns perturbation-conditioned graph structure to some extent, but the current graph outputs are still weaker than a control-graph baseline on the saved cosine comparison table. Expression prediction is currently stronger than graph-fidelity recovery.
+
+## Repository Layout
+
+- `gears/`: upstream GEARS core code
+- `gears_variant/`: alternative GEARS model variants and ablations
+- `gvd/breakdown/`: mechanistic graph-learning components
+- `gvd/tables.md`: saved graph similarity summary table
+- `gears-graph.ipynb`: architecture variant notebook
+- `mech-modelling(3).ipynb`: mechanistic modelling notebook with outputs
+- `mechanistic_pert.ipynb`: mechanistic modelling notebook duplicate/export
+
+## Installation
+
+Install PyTorch Geometric and the GEARS dependencies from `requirements.txt`. The notebooks were run with `cell-gears`, `torch_geometric`, and `scanpy`.
+
+```bash
+pip install -r requirements.txt
 ```
 
-To use your own dataset, create a scanpy adata object with a `gene_name` column in `adata.var`, and two columns `condition`, `cell_type` in `adata.obs`. Then run:
+Depending on your PyTorch and CUDA version, you may also need the matching PyG wheels before running the notebooks.
 
-```python
-pert_data.new_data_process(dataset_name = 'XXX', adata = adata)
-# to load the processed data
-pert_data.load(data_path = './data/XXX')
-```
+## Interpretation
 
-### Demos
+This repository should currently be read as an experimental GEARS extension rather than a polished package release. The completed work shows:
 
-| Name | Description |
-|-----------------|-------------|
-| [Dataset Tutorial](demo/data_tutorial.ipynb) | Tutorial on how to use the dataset loader and read customized data|
-| [Model Tutorial](demo/model_tutorial.ipynb) | Tutorial on how to train GEARS |
-| [Plot top 20 DE genes](demo/tutorial_plot_top20_DE.ipynb) | Tutorial on how to plot the top 20 DE genes|
-| [Uncertainty](demo/tutorial_uncertainty.ipynb) | Tutorial on how to train an uncertainty-aware GEARS model |
-
-
-### Colab
-
-| Name | Description |
-|-----------------|-------------|
-| [Using Trained Model](https://colab.research.google.com/drive/11LlzGEUGoBk_Uj6DzlzizAeWse5_E9MK?usp=sharing) | Use a model trained on Norman et al. 2019 to make predictions (Needs Colab Pro)|
-
-
-
-### Cite Us
-
-```
-@article{roohani2023predicting,
-  title={Predicting transcriptional outcomes of novel multigene perturbations with gears},
-  author={Roohani, Yusuf and Huang, Kexin and Leskovec, Jure},
-  journal={Nature Biotechnology},
-  year={2023},
-  publisher={Nature Publishing Group US New York}
-}
-```
-Paper: [Link](https://www.nature.com/articles/s41587-023-01905-6)
-
-Code for reproducing figures: [Link](https://github.com/yhr91/gears_misc)
+- several working GEARS architectural variants,
+- a mechanistic perturbation model that augments co-expression graphs during prediction,
+- promising expression-level results for the MMD-based mechanistic run,
+- and a clear remaining gap between expression prediction quality and graph reconstruction quality.
